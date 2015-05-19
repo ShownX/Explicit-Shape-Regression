@@ -1,7 +1,7 @@
 function ESR_Train()
     % load data
     % load('../Data/toyData.mat', 'images', 'bbx', 'pts');
-    load('../Data/toyData', 'images_aug', 'bbx_aug', 'pts_aug', 'current_shapes','ground_truth');
+    load('../../Data/toyData', 'images_aug', 'bbx_aug', 'pts_aug', 'current_shapes','ground_truth');
     
     params = Train_params;
     params.N_img = size(images_aug, 1);
