@@ -37,7 +37,7 @@ function ESR_Train()
         end
         % learn stage regressors
         fprintf('Start %d th Training...\n', t);
-        [prediction_delta, fernCascade] = ShapeRegression(Y, images_aug, current_shapes, params);
+        [prediction_delta, fernCascade] = ShapeRegression(Y, images_aug, current_shapes, params, t);
         % reproject and update the current shape
         parfor i = 1:params.N_img
             % regression targets
@@ -55,14 +55,14 @@ function ESR_Train()
     bar(Error);
 end
 
-function [prediction, fernCascade]= ShapeRegression(Y, images, current_shapes, params)
+function [prediction, fernCascade]= ShapeRegression(Y, images, current_shapes, params, t)
     %generate local coordinates
     candidate_pixel_location = zeros(params.P, 2);
     nearest_landmark_index = zeros(params.P, 1);
     for i = 1: params.P
         nearest_landmark_index(i) = randi(params.N_fp);
-        % sample in mean shape coordinate
-        candidate_pixel_location(i, :) = 2*params.k*rand(1,2)-params.k;
+        % sample in mean shape coordinate, [-k, k]
+        candidate_pixel_location(i, :) = unifrnd(-params.k(t), params.k(t));
     end
     % extrate shape indexed pixel
     intensities = zeros(params.N_img, params.P);
