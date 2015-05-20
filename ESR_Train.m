@@ -52,7 +52,7 @@ function ESR_Train()
         fprintf('Mean Root Square Error in %d iteration is %f\n', t, Error(t+1));
         Model{t}.fernCascade = fernCascade;
     end
-    save('model.mat', 'Model');
+    save('../../Data/Model.mat', 'Model');
     bar(Error);
 end
 
@@ -222,6 +222,7 @@ function [prediction, fern] = fernRegression(regression_targets, intensities, ..
     end
 
     fern.bin_output = bin_output;
+    fern.selected_pixel_index = selected_pixel_index;
     fern.selected_pixel_locations = selected_pixel_locations;
     fern.selected_nearest_landmark_index = selected_nearest_landmark_index;
     fern.threshold = threshold;
