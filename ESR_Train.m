@@ -190,7 +190,7 @@ function [prediction, fern] = fernRegression(regression_targets, intensities, ..
         for j = 1: params.F
             intensity_1 = intensities(i, selected_pixel_index(j, 1));
             intensity_2 = intensities(i, selected_pixel_index(j, 2));
-            if(intensity_1 - intensity_2 >= threshold(j))
+            if(intensity_1 - intensity_2) >= threshold(j)
                 index = index + 2^(j-1);
             end
         end
