@@ -52,6 +52,7 @@ function ESR_Train()
         fprintf('Mean Root Square Error in %d iteration is %f\n', t, Error(t+1));
         Model{t}.fernCascade = fernCascade;
     end
+    save('model.mat', 'Model');
     bar(Error);
 end
 
@@ -89,7 +90,7 @@ function [prediction, fernCascade]= ShapeRegression(Y, images, current_shapes, p
         prediction{i} = zeros(params.N_fp, 2);
     end
     
-    fernCascade = cell(params.K, 1);
+    ferns = cell(params.K, 1);
     for i = 1: params.K
         %fprintf('Fern Training: second level is %d out of %d\n', i, params.K);
         [prediction_delta, fern] = fernRegression(regression_targets, intensities, ...
@@ -98,9 +99,11 @@ function [prediction, fernCascade]= ShapeRegression(Y, images, current_shapes, p
             prediction{j} = prediction{j}+ prediction_delta{j};
             regression_targets{j} = regression_targets{j} - prediction_delta{j};
         end
-        fernCascade{i}.fern = fern;
+        ferns{i}.fern = fern;
     end
-    
+    fernCascade.ferns = ferns;
+    fernCascade.candidate_pixel_location = candidate_pixel_location;
+    fernCascade.nearest_landmark_index = nearest_landmark_index;
 end
 
 function [prediction, fern] = fernRegression(regression_targets, intensities, ...
