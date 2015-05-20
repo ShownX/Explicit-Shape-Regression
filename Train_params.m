@@ -6,12 +6,15 @@ function params = Train_params()
     % the local scale of search, it set 0.3 times of the distance between two pupils on the mean shape
     params.F = 5; % the number of features in fern
     
-    load('../../Data/mean_shape.mat', 'S0');
-    params.mean_shape = S0;
+    %params.mean_shape = S0;
     
-    params.N_fp = size(params.mean_shape, 1);
+    params.N_aug = 20;
+    
+    params.N_fp = 0; %size(params.mean_shape, 1);
     params.N_img = 0;
     
-    params.k = params.k*pdist([mean([params.mean_shape(20, :); params.mean_shape(23, :)]);...
-        mean([params.mean_shape(26, :); params.mean_shape(29, :)])])/2;
+    params.flip = 1; % mirror the data
+    params.ind_usedpts = 18:68;
+    %params.k = params.k*pdist([mean([params.mean_shape(20, :); params.mean_shape(23, :)]);...
+    %    mean([params.mean_shape(26, :); params.mean_shape(29, :)])])/2;
 end

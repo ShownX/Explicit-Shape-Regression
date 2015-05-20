@@ -1,14 +1,39 @@
 function ESR_Train()
-    % load data
-    % load('../Data/toyData.mat', 'images', 'bbx', 'pts');
-    load('../../Data/toyData', 'images_aug', 'bbx_aug', 'pts_aug', 'current_shapes','ground_truth');
-    
+    %% load parameters
     params = Train_params;
-    params.N_img = size(images_aug, 1);
     % create paralllel local jobs note
     if isempty(gcp('nocreate'))
         parpool(2);
     end
+    %% load data
+    if exist('Data/train_init.mat', 'file')
+        load('Data/train_init.mat', 'data');
+    else
+        data = loadsamples('D:\Dataset\lfpw\annotations\trainset', 'png');
+        %mkdir Data;
+        save('Data/train_init.mat', 'data');
+    end
+    
+    load('Data/InitialShape_68');
+    params.meanshape = S0(params.ind_usedpts, :);
+    params.N_fp = size(params.meanshape, 1);
+    %% flip data
+    if params.flip
+        data_flip = fliplrdata(data);
+    else
+        data_flip = [];
+    end
+    Data = [data; data_flip];
+    %% choose corresponding points for training
+    parfor i = 1:length(Data)
+        Data{i}.shape_gt = Data{i}.shape_gt(params.ind_usedpts, :);
+        Data{i}.bbox_gt = getbbox(Data{i}.shape_gt);
+    end
+    %% augment the data
+    Data = augmtdata(Data, params);
+    %% Explicit Shape Regression
+    params.N_img = size(images_aug, 1);
+    
 
     Y = cell(params.N_img, 1);
     Error = zeros(1, params.T+1);
