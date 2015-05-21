@@ -41,7 +41,6 @@ function data_aug = augmtdata(data, params)
                 bsxfun(@minus, data_aug{data_index}.intermediate_shapes{1}, mean(data_aug{data_index}.intermediate_shapes{1})),...
                 'nonreflectivesimilarity');                
 
-
             shape_residual = bsxfun(@rdivide, data_aug{data_index}.shape_gt - data_aug{data_index}.intermediate_shapes{1},...
                 [data_aug{data_index}.intermediate_bboxes{1}(3) data_aug{data_index}.intermediate_bboxes{1}(4)]);  
 
