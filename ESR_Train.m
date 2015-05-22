@@ -15,6 +15,7 @@ function ESR_Train()
     end
     
     load('Data/InitialShape_68');
+    dist_pupils_ms = getDistPupils(S0);
     params.meanshape = S0(params.ind_usedpts, :);
     params.N_fp = size(params.meanshape, 1);
     %% flip data
@@ -32,49 +33,64 @@ function ESR_Train()
     %% augment the data
     Data = augmtdata(Data, params);
     Data = Data(1:10); % test
+    
+    params.N_img = size(Data, 1);
+    params.k = params.k*dist_pupils_ms;
+    %% get the pupil distance and groundtruth shape
+%     dist_pupils = zeros(params.N_img, 1);
+    gtshapes = zeros([size(params.meanshape), params.N_img]);
+    ctshapes = zeros([size(params.meanshape), params.N_img]);
+    parfor i = 1: length(Data)
+%         dist_pupils = getDistPupils(Data{i}.shape_gt);
+        gtshapes(:, :, i) = Data{i}.shape_gt;
+        ctshapes(:, :, i) = Data{i}.intermediate_shapes{1};
+    end
     %% Explicit Shape Regression
     % Initialization
-    params.N_img = size(Data, 1);
     Y = cell(params.N_img, 1);
     Error = zeros(1, params.T+1);
-%     Error(1) = mean(evaluation(current_shapes, ground_truth));
-%     fprintf('Mean Root Square Error: Initial is %f\n', Error(1));
+    Error(1) = mean(compute_error( gtshapes, ctshapes));
+    fprintf('Mean Root Square Error: Initial is %f\n', Error(1));
     Model = cell(params.T, 1);
     
     for t = 1: params.T
         %% normalized targets
         parfor i = 1:params.N_img
             Y{i} = Data{i}.shapes_residual;
-%             images_aug{i}.intermediate_bbx = getbbox(current_shapes{i});
-%             meanshape_reproject = reprojectShape(params.mean_shape, images_aug{i}.intermediate_bbx);
-%             images_aug{i}.tf2meanshape = fitgeotrans( bsxfun(@minus, current_shapes{i}, mean(current_shapes{i})), ...
-%                 bsxfun(@minus, meanshape_reproject, mean(meanshape_reproject)),...
-%                 'nonreflectivesimilarity');
-%             images_aug{i}.meanshape2tf = fitgeotrans( bsxfun(@minus, meanshape_reproject, mean(meanshape_reproject)),...
-%                 bsxfun(@minus, current_shapes{i}, mean(current_shapes{i})), ...
-%                 'nonreflectivesimilarity');
-            % regression targets
-%             current_shape = current_shapes{i};
-%             gt = ground_truth{i};
-%             bbx = images_aug{i}.intermediate_bbx;
-%             shape_residual = bsxfun(@rdivide, gt - current_shape, [bbx(3),bbx(4)]);
-%             [u, v] = transformPointsForward(images_aug{i}.tf2meanshape, shape_residual(:, 1), shape_residual(:, 2));
-%             Y{i} = [u, v];
         end
         %% learn stage regressors
         fprintf('Start %d th Training...\n', t);
         [prediction_delta, fernCascade] = ShapeRegression(Y, Data, params, t);
+        
         % reproject and update the current shape
         parfor i = 1:params.N_img
             % regression targets
-            bbx = Data{i}.intermediate_bbx{t};
+            bbx = Data{i}.intermediate_bboxes{t};
+            shape_stage = Data{i}.intermediate_shapes{t};
             delta_shape = prediction_delta{i};
+            
             [u, v] = transformPointsForward(Data{i}.meanshape2tf, delta_shape(:, 1), delta_shape(:, 2));
             delta_shape_interm_coord = [u, v];
             shape_residual = bsxfun(@times, delta_shape_interm_coord, [bbx(3),bbx(4)]);
-            current_shapes{i} = current_shapes{i} + shape_residual;
+            shape_newstage = shape_stage + shape_residual;
+            
+            ctshapes(:, :, i) = shape_newstage;
+            
+            % update the shape
+            Data{i}.intermediate_bboxes{t+1} = getbbox(shape_newstage);
+            Data{i}.intermediate_shapes{t+1} = shape_newstage;
+            meanshape_reproject = resetshape(Data{i}.intermediate_bboxes{t+1}, params.meanshape);
+            Data{i}.tf2meanshape = fitgeotrans( bsxfun(@minus, shape_newstage, mean(shape_newstage)), ...
+                bsxfun(@minus, meanshape_reproject, mean(meanshape_reproject)),...
+                'nonreflectivesimilarity');
+            Data{i}.meanshape2tf = fitgeotrans( bsxfun(@minus, meanshape_reproject, mean(meanshape_reproject)),...
+                bsxfun(@minus, shape_newstage, mean(shape_newstage)), ...
+                'nonreflectivesimilarity');
+            shape_residual = bsxfun(@rdivide, Data{i}.shape_gt - shape_newstage, Data{i}.intermediate_bboxes{t+1}(3:4));
+            [u, v] = transformPointsForward(Data{i}.tf2meanshape, shape_residual(:, 1), shape_residual(:, 2));   
+            Data{i}.shapes_residual = [u, v];
         end
-        Error(t+1) = mean(evaluation(current_shapes, ground_truth));
+        Error(t+1) = mean(compute_error(ctshapes, gtshapes));
         fprintf('Mean Root Square Error in %d iteration is %f\n', t, Error(t+1));
         Model{t}.fernCascade = fernCascade;
     end
@@ -83,7 +99,7 @@ function ESR_Train()
 end
 
 function [prediction, fernCascade]= ShapeRegression(Y, Data, params, t)
-    %generate local coordinates
+    %% generate local coordinates
     candidate_pixel_location = zeros(params.P, 2);
     nearest_landmark_index = zeros(params.P, 1);
     for i = 1: params.P
@@ -91,25 +107,25 @@ function [prediction, fernCascade]= ShapeRegression(Y, Data, params, t)
         % sample in mean shape coordinate, [-k, k]
         candidate_pixel_location(i, :) = unifrnd(-params.k(t), params.k(t));
     end
-    % extrate shape indexed pixel
+    %% extrate shape indexed pixel
     intensities = zeros(params.N_img, params.P);
     for i = 1: params.N_img
         for j = 1: params.P
-            x = candidate_pixel_location(j, 1)*Data{i}.intermediate_bbx{t}(3);
-            y = candidate_pixel_location(j, 2)* Data{i}.intermediate_bbx{t}(4);
+            x = candidate_pixel_location(j, 1)* Data{i}.intermediate_bboxes{t}(3);
+            y = candidate_pixel_location(j, 2)* Data{i}.intermediate_bboxes{t}(4);
             [project_x, project_y] = transformPointsForward(Data{i}.meanshape2tf, x, y);
             index = nearest_landmark_index(j);
             
             real_x = round(project_x + Data{i}.intermediate_shapes{t}(index, 1));
             real_y = round(project_y + Data{i}.intermediate_shapes{t}(index, 2));
-            real_x = max(1, min(real_x, size(Data{i}.faceimg, 2)-1));
-            real_y = max(1, min(real_y, size(Data{i}.faceimg, 1)-1));
-            intensities(i, j)= Data{i}.faceimg(real_y, real_x);
+            real_x = max(1, min(real_x, size(Data{i}.img_gray, 2)-1));
+            real_y = max(1, min(real_y, size(Data{i}.img_gray, 1)-1));
+            intensities(i, j)= Data{i}.img_gray(real_y, real_x);
         end
     end
-    % compute pixel-pixel covariance
+    %% compute pixel-pixel covariance
     covariance = cov(intensities);
-    % train internal level boost regression
+    %% train internal level boost regression
     regression_targets = Y; % initialization
     prediction = cell(params.N_img, 1);
     parfor i = 1: params.N_img
@@ -120,7 +136,7 @@ function [prediction, fernCascade]= ShapeRegression(Y, Data, params, t)
     for i = 1: params.K
         %fprintf('Fern Training: second level is %d out of %d\n', i, params.K);
         [prediction_delta, fern] = fernRegression(regression_targets, intensities, ...
-            covariance, candidate_pixel_location, nearest_landmark_index,params);
+            covariance, candidate_pixel_location, nearest_landmark_index, params);
         for j = 1: size(prediction_delta,1)
             prediction{j} = prediction{j}+ prediction_delta{j};
             regression_targets{j} = regression_targets{j} - prediction_delta{j};

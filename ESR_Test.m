@@ -1,10 +1,30 @@
 function ESR_Test()
-    load('../../Data/toyData.mat', 'bbx_aug', 'pts_aug');
-    load('../../Data/Test_Data.mat', 'test_images', 'test_bbx', 'test_pts'); % load the current shapes
+%% load parameters
+    params = Train_params;
+    % create paralllel local jobs note
+    if isempty(gcp('nocreate'))
+        parpool(2);
+    end
+    %% load data
+    if exist('Data/train_init.mat', 'file')
+        load('Data/train_init.mat', 'data');
+    else
+        data = loadsamples('D:\Dataset\lfpw\annotations\testset', 'png');
+        %mkdir Data;
+        save('Data/train_init.mat', 'data');
+    end
+    
+    load('Data/InitialShape_68');
+    dist_pupils_ms = getDistPupils(S0);
+    params.meanshape = S0(params.ind_usedpts, :);
+    params.N_fp = size(params.meanshape, 1);
+%     load('../../Data/toyData.mat', 'bbx_aug', 'pts_aug');
+%     load('../../Data/Test_Data.mat', 'test_images', 'test_bbx', 'test_pts'); % load the current shapes
     load('../../Data/Model.mat', 'Model');
     params = Test_params;
     params.N_img = size(test_images, 1);
     
+    %%
     for i = 1: 1
         image = test_images{i};
         bbx = test_bbx{i};
@@ -59,8 +79,8 @@ function prediction_delta = fernCascadeTest(image, current_shape, fernCascade, p
                 'nonreflectivesimilarity');
     
     %extract shape indexed pixels
-    candidate_pixel_location = fernCascade.candidate_pixel_location;
-    nearest_landmark_index = fernCascade.nearest_landmark_index;
+    candidate_pixel_location = fernCascade.candidate_pixel_locations;
+    nearest_landmark_index = fernCascade.selected_nearest_landmark_index;
     intensities = zeros(1, params.P);
     for j = 1: params.P
         x = candidate_pixel_location(j, 1)*image.intermediate_bbx(3);
