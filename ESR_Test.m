@@ -1,6 +1,6 @@
 function ESR_Test()
 %% load parameters
-    params = Train_params;
+    params = Test_params;
     % create paralllel local jobs note
     if isempty(gcp('nocreate'))
         parpool(2);
@@ -8,29 +8,25 @@ function ESR_Test()
     %% load data
     if exist('Data/train_init.mat', 'file')
         load('Data/train_init.mat', 'data');
+        initSet = data;
+        clear data;
     else
-        data = loadsamples('D:\Dataset\lfpw\annotations\testset', 'png');
-        %mkdir Data;
-        save('Data/train_init.mat', 'data');
+        disp('lack of initial set of shapes');
     end
     
+    Data = loadsamples('/Volumes/LG_SDJet/Datasets/lfpw/annotations/trainset', 'png');
+    params.N_img = size(Data, 1); 
     load('Data/InitialShape_68');
     dist_pupils_ms = getDistPupils(S0);
     params.meanshape = S0(params.ind_usedpts, :);
     params.N_fp = size(params.meanshape, 1);
-%     load('../../Data/toyData.mat', 'bbx_aug', 'pts_aug');
-%     load('../../Data/Test_Data.mat', 'test_images', 'test_bbx', 'test_pts'); % load the current shapes
-    load('../../Data/Model.mat', 'Model');
-    params = Test_params;
-    params.N_img = size(test_images, 1);
-    
+
+    load('Data/Model.mat', 'Model'); 
     %%
     for i = 1: 1
-        image = test_images{i};
-        bbx = test_bbx{i};
-        Prediction = ShapeRegression(image, bbx, bbx_aug, pts_aug, Model, params);
+        Prediction = ShapeRegression(Data{i}, initSet, Model, params);
         figure
-        imshow(test_images{i}.faceimg)
+        imshow(Data{i}.img_gray)
         hold on
         plot(Prediction(:, 1), Prediction(:, 2), 'g+');
         hold off
@@ -38,39 +34,24 @@ function ESR_Test()
     
 end
 
-function predict = ShapeRegression(image, bbx, bbx_aug, pts_aug, Model, params)
+function predict = ShapeRegression(data, initSet, Model, params)
     % Multiple initializations
     
     %predict = zeros(params.N_fp, 2);
-    [current_shapes] = initialTest(image, bbx, bbx_aug, pts_aug, params);
-%     for i = 1: params.N_init
-%         current_shape = pts_aug{Index_init(i)}.pts_chs;
-%         current_bbx = bbx_aug{Index_init(i)}.bbx_chs;
-%         current_shape = projectShape(current_shape, current_bbx);
-%         current_shape = reprojectShape(current_shape, bbx.bbx_chs);
-%         
-%         for t = 1: params.T
-%             prediction_delta = fernCascadeTest(image, current_shape, Model{t}.fernCascade, params);
-%             current_shape = prediction_delta + projectShape(current_shape, bbx.bbx_chs);
-%             current_shape = reprojectShape(current_shape, bbx.bbx_chs);
-%         end
-%         
-%         predict = predict + current_shape;
-%     end
-%     Predictions = zeros(params.N_fp, 2, params.N_init);
+    ctshapes = initialTest(data, initSet, params);
+
     for t = 1: params.T
         for i = 1: params.N_init
-            prediction_delta = fernCascadeTest(image, current_shapes(:, :, i), Model{t}.fernCascade, params);
-            current_norm_shape = prediction_delta + projectShape(current_shapes(:, :, i), bbx.bbx_chs);
-            current_shapes(:, :, i) = reprojectShape(current_norm_shape, bbx.bbx_chs);
+            prediction_delta = fernCascadeTest(data, ctshapes(:, :, i), Model{t}.fernCascade, params);
+            ctshapes(:, :, i) = ctshapes(:, :, i) + prediction_delta;
         end
     end
-    predict = mean(current_shapes, 3);
+    predict = mean(ctshapes, 3);
 end
 
 function prediction_delta = fernCascadeTest(image, current_shape, fernCascade, params)
     image.intermediate_bbx = getbbox(current_shape);
-    meanshape = reprojectShape(params.mean_shape, image.intermediate_bbx);
+    meanshape = resetshape(image.intermediate_bbx, params.meanshape);
     image.tf2meanshape = fitgeotrans(bsxfun(@minus, current_shape, mean(current_shape)), ...
                 bsxfun(@minus, meanshape, mean(meanshape)),...
                 'nonreflectivesimilarity');
@@ -79,8 +60,8 @@ function prediction_delta = fernCascadeTest(image, current_shape, fernCascade, p
                 'nonreflectivesimilarity');
     
     %extract shape indexed pixels
-    candidate_pixel_location = fernCascade.candidate_pixel_locations;
-    nearest_landmark_index = fernCascade.selected_nearest_landmark_index;
+    candidate_pixel_location = fernCascade.candidate_pixel_location;
+    nearest_landmark_index = fernCascade.nearest_landmark_index;
     intensities = zeros(1, params.P);
     for j = 1: params.P
         x = candidate_pixel_location(j, 1)*image.intermediate_bbx(3);
@@ -90,12 +71,12 @@ function prediction_delta = fernCascadeTest(image, current_shape, fernCascade, p
 
         real_x = round(project_x + current_shape(index, 1));
         real_y = round(project_y + current_shape(index, 2));
-        real_x = max(1, min(real_x, size(image.faceimg, 2)-1));
-        real_y = max(1, min(real_y, size(image.faceimg, 1)-1));
-        intensities(j)= image.faceimg(real_y, real_x);
+        real_x = max(1, min(real_x, size(image.img_gray, 2)-1));
+        real_y = max(1, min(real_y, size(image.img_gray, 1)-1));
+        intensities(j)= image.img_gray(real_y, real_x);
     end
     
-    delta_shape = zeros(size(params.mean_shape));
+    delta_shape = zeros(size(params.meanshape));
     for i = 1: params.K
         fern = fernCascade.ferns{i}.fern;
         delta_shape = delta_shape + fernTest(intensities, fern, params);
@@ -104,7 +85,7 @@ function prediction_delta = fernCascadeTest(image, current_shape, fernCascade, p
     %convert to the currentshape model
     [u, v] = transformPointsForward(image.meanshape2tf, delta_shape(:, 1), delta_shape(:, 2));
     prediction_delta = [u, v];
-    %prediction_delta = bsxfun(@times, delta_shape_interm_coord, [image.intermediate_bbx(3),image.intermediate_bbx(4)]);
+    prediction_delta = bsxfun(@times, prediction_delta, [image.intermediate_bbx(3),image.intermediate_bbx(4)]);
 end
 
 function fern_pred = fernTest(intensities, fern, params)

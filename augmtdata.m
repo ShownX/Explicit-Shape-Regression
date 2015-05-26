@@ -13,7 +13,7 @@ function data_aug = augmtdata(data, params)
         for j = 1: params.N_aug
             r_index = rand_index_(j);
             % copy the original stuff
-            data_index = (j-1)*data_len + i;
+            data_index = (i-1)*params.N_aug + j;
             data_aug{data_index}.img_gray = data{i}.img_gray;
             data_aug{data_index}.width_orig  = data{i}.width_orig;
             data_aug{data_index}.height_orig = data{i}.height_orig;    

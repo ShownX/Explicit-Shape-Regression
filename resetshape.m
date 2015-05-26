@@ -1,4 +1,4 @@
-function [shape_initial] = resetshape(bbox, shape_union)
+function shape_initial = resetshape(bbox, shape_union)
 %RESETSHAPE Summary of this function goes here
 %   Function: reset the initial shape according to the groundtruth shape and union shape for all faces
 %   Detailed explanation goes here

@@ -1,5 +1,5 @@
-function [CShapes]= initialTest(image, bbx, train_bbx, train_pts, params)
-    N_train_img = size(train_pts, 1);
+function CShapes = initialTest(data, initSet, params)
+    N_train_img = size(initSet, 1);
     Index_init = randperm(N_train_img, params.N_init);
     
 %     Images = cell(params.N_init, 1);
@@ -10,10 +10,12 @@ function [CShapes]= initialTest(image, bbx, train_bbx, train_pts, params)
         
 %         Images{i} = image;
 %         Bbxes{i} = bbx;
-        current_shape = train_pts{Index_init(i)}.pts_chs;
-        current_bbx = train_bbx{Index_init(i)}.bbx_chs;
-        current_shape = projectShape(current_shape, current_bbx);
-        CShapes(:, :, i) = reprojectShape(current_shape, bbx.bbx_chs);
+        current_shape = initSet{Index_init(i)}.shape_gt(params.ind_usedpts,:);
+        current_bbx = data.bbox_gt;
+        temp = resetshape(current_bbx, current_shape);
+        CShapes(:, :, i) = temp;
+%         current_shape = projectShape(current_shape, current_bbx);
+%         CShapes(:, :, i) = reprojectShape(current_shape, bbx.bbx_chs);
         
 %         figure
 %         currentshape = CShapes(:, :, i);

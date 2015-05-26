@@ -9,7 +9,7 @@ function ESR_Train()
     if exist('Data/train_init.mat', 'file')
         load('Data/train_init.mat', 'data');
     else
-        data = loadsamples('D:\Dataset\lfpw\annotations\trainset', 'png');
+        data = loadsamples('/Volumes/LG_SDJet/Datasets/lfpw/annotations/trainset', 'png');
         %mkdir Data;
         save('Data/train_init.mat', 'data');
     end
@@ -32,7 +32,7 @@ function ESR_Train()
     end
     %% augment the data
     Data = augmtdata(Data, params);
-    Data = Data(1:10); % test
+    %Data = Data(1:10); % test
     
     params.N_img = size(Data, 1);
     params.k = params.k*dist_pupils_ms;
@@ -94,7 +94,7 @@ function ESR_Train()
         fprintf('Mean Root Square Error in %d iteration is %f\n', t, Error(t+1));
         Model{t}.fernCascade = fernCascade;
     end
-    save('../../Data/Model.mat', 'Model');
+    save('Data/Model.mat', 'Model');
     bar(Error);
 end
 
