@@ -3,13 +3,13 @@ function ESR_Train()
     params = Train_params;
     % create paralllel local jobs note
     if isempty(gcp('nocreate'))
-        parpool(2);
+        parpool(8);
     end
     %% load data
     if exist('Data/train_init.mat', 'file')
         load('Data/train_init.mat', 'data');
     else
-        data = loadsamples('/Volumes/LG_SDJet/Datasets/lfpw/annotations/trainset', 'png');
+        data = loadsamples('/lfpw/annotations/trainset', 'png');
         %mkdir Data;
         save('Data/train_init.mat', 'data');
     end

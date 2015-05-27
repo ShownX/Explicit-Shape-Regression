@@ -220,3 +220,5 @@ pip-log.txt
 #############
 *.mat
 *.asv
+*.png
+*.pts
