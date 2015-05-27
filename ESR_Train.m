@@ -3,7 +3,7 @@ function ESR_Train()
     params = Train_params;
     % create paralllel local jobs note
     if isempty(gcp('nocreate'))
-        parpool(8);
+        parpool(2);
     end
     %% load data
     if exist('Data/train_init.mat', 'file')
@@ -18,6 +18,9 @@ function ESR_Train()
     dist_pupils_ms = getDistPupils(S0);
     params.meanshape = S0(params.ind_usedpts, :);
     params.N_fp = size(params.meanshape, 1);
+    params.N_img = size(data, 1);
+    
+    initSet = data;
     %% flip data
     if params.flip
         data_flip = fliplrdata(data);
@@ -25,14 +28,14 @@ function ESR_Train()
         data_flip = [];
     end
     Data = [data; data_flip];
+    %Data = Data(1);
     %% choose corresponding points for training
     parfor i = 1:length(Data)
         Data{i}.shape_gt = Data{i}.shape_gt(params.ind_usedpts, :);
         Data{i}.bbox_gt = getbbox(Data{i}.shape_gt);
     end
     %% augment the data
-    Data = augmtdata(Data, params);
-    %Data = Data(1:10); % test
+    Data = initialize(Data, initSet, params);
     
     params.N_img = size(Data, 1);
     params.k = params.k*dist_pupils_ms;
@@ -41,18 +44,17 @@ function ESR_Train()
     gtshapes = zeros([size(params.meanshape), params.N_img]);
     ctshapes = zeros([size(params.meanshape), params.N_img]);
     parfor i = 1: length(Data)
-%         dist_pupils = getDistPupils(Data{i}.shape_gt);
         gtshapes(:, :, i) = Data{i}.shape_gt;
         ctshapes(:, :, i) = Data{i}.intermediate_shapes{1};
     end
-    %% Explicit Shape Regression
+    
     % Initialization
     Y = cell(params.N_img, 1);
     Error = zeros(1, params.T+1);
     Error(1) = mean(compute_error( gtshapes, ctshapes));
     fprintf('Mean Root Square Error: Initial is %f\n', Error(1));
     Model = cell(params.T, 1);
-    
+    %% Explicit Shape Regression
     for t = 1: params.T
         %% normalized targets
         parfor i = 1:params.N_img
@@ -95,7 +97,10 @@ function ESR_Train()
         Model{t}.fernCascade = fernCascade;
     end
     save('Data/Model.mat', 'Model');
+    %% show 
     bar(Error);
+    xlabel('iterations');
+    ylabel('Root Mean Square Error (RMSE)');
 end
 
 function [prediction, fernCascade]= ShapeRegression(Y, Data, params, t)
@@ -105,11 +110,14 @@ function [prediction, fernCascade]= ShapeRegression(Y, Data, params, t)
     for i = 1: params.P
         nearest_landmark_index(i) = randi(params.N_fp);
         % sample in mean shape coordinate, [-k, k]
-        candidate_pixel_location(i, :) = unifrnd(-params.k(t), params.k(t));
+        candidate_pixel_location(i, :) = rand(1, 2)*2*params.k(t) - params.k(t) ;
     end
     %% extrate shape indexed pixel
     intensities = zeros(params.N_img, params.P);
     for i = 1: params.N_img
+%         figure
+%         imshow(Data{i}.img_gray);
+%         hold on
         for j = 1: params.P
             x = candidate_pixel_location(j, 1)* Data{i}.intermediate_bboxes{t}(3);
             y = candidate_pixel_location(j, 2)* Data{i}.intermediate_bboxes{t}(4);
@@ -121,7 +129,11 @@ function [prediction, fernCascade]= ShapeRegression(Y, Data, params, t)
             real_x = max(1, min(real_x, size(Data{i}.img_gray, 2)-1));
             real_y = max(1, min(real_y, size(Data{i}.img_gray, 1)-1));
             intensities(i, j)= Data{i}.img_gray(real_y, real_x);
+%             plot(Data{i}.intermediate_shapes{t}(index, 1), Data{i}.intermediate_shapes{t}(index, 2), 'ro');
+%             plot(real_x, real_y, 'g+');
+            %text(real_x, real_y, num2str(j));
         end
+%         hold off
     end
     %% compute pixel-pixel covariance
     covariance = cov(intensities);
@@ -133,10 +145,11 @@ function [prediction, fernCascade]= ShapeRegression(Y, Data, params, t)
     end
     
     ferns = cell(params.K, 1);
+    
     for i = 1: params.K
         %fprintf('Fern Training: second level is %d out of %d\n', i, params.K);
         [prediction_delta, fern] = fernRegression(regression_targets, intensities, ...
-            covariance, candidate_pixel_location, nearest_landmark_index, params);
+            covariance, nearest_landmark_index, params);%, candidate_pixel_location
         for j = 1: size(prediction_delta,1)
             prediction{j} = prediction{j}+ prediction_delta{j};
             regression_targets{j} = regression_targets{j} - prediction_delta{j};
@@ -149,24 +162,25 @@ function [prediction, fernCascade]= ShapeRegression(Y, Data, params, t)
 end
 
 function [prediction, fern] = fernRegression(regression_targets, intensities, ...
-    covariance, candidate_pixel_locations, nearest_landmark_index, params)
+    covariance, nearest_landmark_index, params)%, candidate_pixel_locations
     selected_pixel_index = zeros(params.F, 2);
-    selected_pixel_locations = zeros(params.F, 4);
+%     selected_pixel_locations = zeros(params.F, 4);
     selected_nearest_landmark_index = zeros(params.F, 2);
     threshold = zeros(params.F,1);
     
     for i = 1: params.F
-        v = rand(params.N_fp, 2);
+        v = randn(params.N_fp, 2); % draw a random projection from unit Gaussian
         v = v/norm(v);
         % random projection
-        projection_result = zeros(params.N_img, 1);
+        Y_prob = zeros(params.N_img, 1);
         for j = 1: params.N_img
-            projection_result(j) = sum(sum(regression_targets{j}.*v));
+            Y_prob(j) = sum(sum(regression_targets{j}.*v));
         end
         % compute target-pixel covariance
-        Y_prob = zeros(1, params.P);
+        cov_prob = zeros(1, params.P);
         for j = 1: params.P
-            Y_prob(j) = corr(projection_result, intensities(:, j));
+            covmatrix = cov(Y_prob, intensities(:, j));
+            cov_prob(j) = covmatrix(2);
         end
         % compute variance of Y_prob
         % sigma_prob = std(Y_prob);
@@ -177,6 +191,7 @@ function [prediction, fern] = fernRegression(regression_targets, intensities, ..
         for m = 1: params.P
             for n = 1: params.P
                 sigma_mn = covariance(m,m) + covariance(n, n) - 2*covariance(m, n);
+                
                 if(abs(sigma_mn)<1e-10)
                     continue;
                 end
@@ -194,8 +209,8 @@ function [prediction, fern] = fernRegression(regression_targets, intensities, ..
                     continue; 
                 end;
                 
-                temp = (Y_prob(m) - Y_prob(n))/sqrt(sigma_mn); % it does need sqrt(sigma_mn*sigma_prob)
-                if(abs(temp)> max_correlation) % do it need abs
+                temp = (cov_prob(m) - cov_prob(n))/sqrt(sigma_mn); % it does need sqrt(sigma_mn*sigma_prob)
+                if(temp > max_correlation) % do it need abs
                     max_correlation = temp;
                     m_f = m;
                     n_f = n;
@@ -205,10 +220,10 @@ function [prediction, fern] = fernRegression(regression_targets, intensities, ..
         selected_pixel_index(i, 1) = m_f;
         selected_pixel_index(i, 2) = n_f;
         
-        selected_pixel_locations(i,1) = candidate_pixel_locations(m_f,1);
-        selected_pixel_locations(i,2) = candidate_pixel_locations(m_f,2);
-        selected_pixel_locations(i,3) = candidate_pixel_locations(n_f,1);
-        selected_pixel_locations(i,4) = candidate_pixel_locations(n_f,2);
+%         selected_pixel_locations(i,1) = candidate_pixel_locations(m_f,1);
+%         selected_pixel_locations(i,2) = candidate_pixel_locations(m_f,2);
+%         selected_pixel_locations(i,3) = candidate_pixel_locations(n_f,1);
+%         selected_pixel_locations(i,4) = candidate_pixel_locations(n_f,2);
         selected_nearest_landmark_index(i,1) = nearest_landmark_index(m_f); 
         selected_nearest_landmark_index(i,2) = nearest_landmark_index(n_f);
         
@@ -220,7 +235,7 @@ function [prediction, fern] = fernRegression(regression_targets, intensities, ..
             end
         end
 
-        threshold(i) = unifrnd(-0.2*max_diff, 0.2*max_diff);
+        threshold(i) = 0.4*max_diff*rand -0.2*max_diff;
     end
     
     % determine the bins of each shape
@@ -265,7 +280,7 @@ function [prediction, fern] = fernRegression(regression_targets, intensities, ..
 
     fern.bin_output = bin_output;
     fern.selected_pixel_index = selected_pixel_index;
-    fern.selected_pixel_locations = selected_pixel_locations;
+%     fern.selected_pixel_locations = selected_pixel_locations;
     fern.selected_nearest_landmark_index = selected_nearest_landmark_index;
     fern.threshold = threshold;
 end

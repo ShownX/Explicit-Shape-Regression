@@ -25,11 +25,11 @@ function Data = initialize(data, initSet, params)
             Data{Index}.height_orig = data{i}.height_orig;    
             Data{Index}.width       = data{i}.width;
             Data{Index}.height      = data{i}.height;
-            Data{Index}.shape_gt    = data{i}.shape_gt(params.ind_usedpts, :);
-            Data{Index}.bbox_gt     = getbbox(Data{Index}.shape_gt);
+            Data{Index}.shape_gt    = data{i}.shape_gt;
+            Data{Index}.bbox_gt     = data{i}.bbox_gt;
             % add the new element
-            Data{Index}.intermediate_shapes = cell(1, params.T);
-            Data{Index}.intermediate_bboxes = cell(1, params.T);
+            Data{Index}.intermediate_shapes = cell(1, params.T+1);
+            Data{Index}.intermediate_bboxes = cell(1, params.T+1);
             % scale and translate the sampled shape to ground-truth
             % face rectangle region
             select_shape = resetshape(data{i}.bbox_gt, initSet{r_index}.shape_gt(params.ind_usedpts, :));

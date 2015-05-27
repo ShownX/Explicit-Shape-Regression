@@ -1,7 +1,7 @@
 function [currentshapes, groundtruthes] = getCSandGTfromData(Data, t, params)
-    
-    currentshapes = zeros([size(params.meanshape), params.N_img]);
-    groundtruthes = zeros([size(params.meanshape), params.N_img]);
+    DataLen = size(Data,1);
+    currentshapes = zeros([size(params.meanshape), DataLen]);
+    groundtruthes = zeros([size(params.meanshape), DataLen]);
     for i = 1: DataLen
         currentshapes(:, :, i) = Data{i}.intermediate_shapes{t};
         groundtruthes(:, :, i) = Data{i}.shape_gt;
